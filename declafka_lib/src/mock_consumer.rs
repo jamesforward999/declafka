@@ -33,7 +33,7 @@ pub struct MockKafkaConsumer {
 
 impl MockKafkaConsumer {
     pub fn new() -> Self {
-        let (sender, receiver) = mpsc::channel(100);
+        let (_sender, receiver) = mpsc::channel(100);
         Self {
             topics: Arc::new(Mutex::new(vec![])),
             receiver: Arc::new(tokio::sync::Mutex::new(receiver)),

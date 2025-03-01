@@ -46,7 +46,7 @@ fn string_deserializer(payload: &[u8]) -> Option<String> {
     topic = "test-topic",
     listener_id = "test-listener",
     yaml_path = "test-kafka-basic.yaml",
-    deserializer = "json_deserializer",
+    deserializer = json_deserializer,
 )]
 fn test_handler(msg: TestMessage) -> Result<(), Error> {
     PROCESSED_COUNT.fetch_add(1, Ordering::SeqCst);
@@ -61,7 +61,7 @@ fn test_handler(msg: TestMessage) -> Result<(), Error> {
     topic = "test-topic-2",
     listener_id = "test-listener-2",
     yaml_path = "test-kafka-dlq.yaml",
-    deserializer = "json_deserializer",
+    deserializer = json_deserializer,
     dlq_topic = "test-topic-dlq"
 )]
 fn test_handler_2(msg: TestMessage) -> Result<(), Error> {
@@ -76,7 +76,7 @@ fn test_handler_2(msg: TestMessage) -> Result<(), Error> {
     topic = "test-topic-dlq",
     listener_id = "dlq-listener",
     yaml_path = "test-kafka-dlq.yaml",
-    deserializer = "string_deserializer"
+    deserializer = string_deserializer
 )]
 fn test_topic_dlq_handler(_msg: String) -> Result<(), Error> {
     info!("Received message from DLQ: {:?}", _msg);
@@ -88,7 +88,7 @@ fn test_topic_dlq_handler(_msg: String) -> Result<(), Error> {
     topic = "testing-errors",
     listener_id = "erroring-listener",
     yaml_path = "test-kafka-non-dlq-retry.yaml",
-    deserializer = "string_deserializer",
+    deserializer = string_deserializer,
     retry_max_attempts = 5,
     retry_initial_backoff = 100,
     retry_max_backoff = 10000,

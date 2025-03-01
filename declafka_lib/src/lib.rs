@@ -423,7 +423,7 @@ mod tests {
 
     use log::LevelFilter;
 
-    use crate::mock_consumer::{MockDLQProducer, MockKafkaConsumer};
+    use crate::mock_consumer::MockKafkaConsumer;
 
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -436,6 +436,7 @@ mod tests {
         let processed_count = Arc::new(AtomicUsize::new(0));
         let count_clone = processed_count.clone();
         let handler = move |msg: String| {
+            debug!("Processing message: {}", msg);
             count_clone.fetch_add(1, Ordering::SeqCst);
             Ok(())
         };

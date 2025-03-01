@@ -1,10 +1,10 @@
 use proc_macro::TokenStream;
 use quote::{quote, format_ident};
 use syn::{
-    parse_macro_input, ItemFn, Meta, Expr, ExprLit, Lit,
+    parse_macro_input, ItemFn, Meta, Expr, ExprLit, Lit, Path,
     punctuated::Punctuated, token::Comma,
     parse::{Parse, ParseStream},
-    Path, FnArg,
+    FnArg, Ident,
 };
 
 /// A small wrapper type to parse a comma-separated list of attributes.
@@ -28,7 +28,7 @@ struct KafkaListenerArgs {
     retry_initial_backoff: Option<u64>,
     retry_max_backoff: Option<u64>,
     retry_multiplier: Option<f64>,
-    backend: Option<String>,
+    backend: Option<KafkaBackend>,
 }
 
 impl KafkaListenerArgs {
@@ -54,8 +54,11 @@ impl KafkaListenerArgs {
                     "listener_id" => listener_id = Some(Self::extract_string_literal(&nv.value)?),
                     "yaml_path" => yaml_path = Some(Self::extract_string_literal(&nv.value)?),
                     "deserializer" => {
-                        let path_str = Self::extract_string_literal(&nv.value)?;
-                        deser_fn = Some(syn::parse_str(&path_str)?);
+                        if let Expr::Path(path) = &nv.value {
+                            deser_fn = Some(path.path.clone());
+                        } else {
+                            return Err(syn::Error::new_spanned(&nv.value, "Expected path"));
+                        }
                     }
                     "dlq_topic" => dlq_topic = Some(Self::extract_string_literal(&nv.value)?),
                     "retry_max_attempts" => {
@@ -70,7 +73,7 @@ impl KafkaListenerArgs {
                     "retry_multiplier" => {
                         retry_multiplier = Some(Self::extract_literal_float(&nv.value)?)
                     }
-                    "backend" => backend = Some(Self::extract_string_literal(&nv.value)?),
+                    "backend" => backend = Some(Self::extract_backend(&nv.value)?),
                     _ => {
                         return Err(syn::Error::new_spanned(
                             &nv.path,
@@ -139,6 +142,24 @@ impl KafkaListenerArgs {
             _ => Err(syn::Error::new_spanned(expr, "Expected numeric literal")),
         }
     }
+
+    fn extract_backend(expr: &Expr) -> syn::Result<KafkaBackend> {
+        if let Expr::Lit(ExprLit { lit: Lit::Str(lit_str), .. }) = expr {
+            match lit_str.value().as_str() {
+                "rdkafka" => Ok(KafkaBackend::RDKafka),
+                "in_memory" => Ok(KafkaBackend::InMemory),
+                _ => Err(syn::Error::new_spanned(expr, "Unknown backend")),
+            }
+        } else {
+            Err(syn::Error::new_spanned(expr, "Expected string literal"))
+        }
+    }
+}
+
+/// Enum for Kafka backend types.
+enum KafkaBackend {
+    RDKafka,
+    InMemory,
 }
 
 /// Represents the parsed begin_listeners attributes.
@@ -176,6 +197,23 @@ impl BeginListenersArgs {
     }
 }
 
+/// A procedural macro to define a Kafka listener function.
+///
+/// This macro annotates a function to turn it into a Kafka listener. It generates a factory function
+/// that creates a `KafkaListener` instance, which can be started using the `begin_listeners` macro.
+///
+/// # Attributes
+///
+/// - `topic`: The Kafka topic to listen to (required).
+/// - `listener_id`: A unique identifier for the listener (required).
+/// - `yaml_path`: Path to the YAML configuration file for Kafka (required).
+/// - `deserializer`: A path to a deserializer function (optional, defaults to `declafka_lib::string_deserializer`).
+/// - `dlq_topic`: The dead-letter queue topic (optional).
+/// - `retry_max_attempts`: Maximum number of retry attempts (optional, defaults to 3).
+/// - `retry_initial_backoff`: Initial backoff time in milliseconds (optional, defaults to 100).
+/// - `retry_max_backoff`: Maximum backoff time in milliseconds (optional, defaults to 10000).
+/// - `retry_multiplier`: Backoff multiplier (optional, defaults to 2.0).
+/// - `backend`: The Kafka backend to use (`"rdkafka"` or `"in_memory"`, optional, defaults to `"rdkafka"`).
 #[proc_macro_attribute]
 pub fn kafka_listener(attrs: TokenStream, item: TokenStream) -> TokenStream {
     // Parse the input function and attributes.
@@ -198,7 +236,7 @@ pub fn kafka_listener(attrs: TokenStream, item: TokenStream) -> TokenStream {
     };
 
     // Generate the factory function name.
-    let factory_fn_name = syn::Ident::new(&format!("{}_listener", fn_name), fn_name.span());
+    let factory_fn_name = Ident::new(&format!("{}_listener", fn_name), fn_name.span());
     let topic_str = &args.topic;
     let listener_id = &args.listener_id;
     let yaml_path = &args.yaml_path;
@@ -236,14 +274,9 @@ pub fn kafka_listener(attrs: TokenStream, item: TokenStream) -> TokenStream {
     };
 
     // Determine which consumer backend to use.
-    let consumer_code = if let Some(backend) = args.backend {
-        if backend == "in_memory" {
-            quote! { declafka_lib::mock_consumer::MockKafkaConsumer::new() }
-        } else {
-            quote! { declafka_lib::rdkafka_consumer::RDKafkaConsumer::new(#yaml_path, #listener_id, #topic_str)? }
-        }
-    } else {
-        quote! { declafka_lib::rdkafka_consumer::RDKafkaConsumer::new(#yaml_path, #listener_id, #topic_str)? }
+    let consumer_code = match args.backend {
+        Some(KafkaBackend::InMemory) => quote! { declafka_lib::mock_consumer::MockKafkaConsumer::new() },
+        _ => quote! { declafka_lib::rdkafka_consumer::RDKafkaConsumer::new(#yaml_path, #listener_id, #topic_str)? },
     };
 
     let expanded = quote! {
@@ -267,6 +300,14 @@ pub fn kafka_listener(attrs: TokenStream, item: TokenStream) -> TokenStream {
     expanded.into()
 }
 
+/// A procedural macro to start multiple Kafka listeners at the beginning of an async function.
+///
+/// This macro modifies an async function to initialize and start multiple Kafka listeners
+/// (via their factory functions) at the start of execution, spawning them as Tokio tasks.
+///
+/// # Attributes
+///
+/// - `listeners`: An array of paths to the listener factory functions (e.g., `[listener1, listener2]`).
 #[proc_macro_attribute]
 pub fn begin_listeners(attrs: TokenStream, item: TokenStream) -> TokenStream {
     let mut input_fn = parse_macro_input!(item as ItemFn);
