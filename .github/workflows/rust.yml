@@ -1,0 +1,48 @@
+name: Rust
+
+on:
+  push:
+    branches: [ "master" ]
+    paths-ignore:
+      - README.md
+      - LICENSE
+      - .github/workflows/rust.yml
+  pull_request:
+    branches: [ "master" ]
+    paths-ignore:
+      - README.md
+      - LICENSE
+      - .github/workflows/rust.yml
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1  # Enable backtraces for panics
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    # Cache Rust dependencies
+    - name: Cache Rust dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-
+      
+    # Run tests with timing and debug
+    - name: Run tests
+      id: run-tests
+      run: |
+        echo "Starting tests at $(date)"
+        time make test
+        echo "Finished tests at $(date)"
