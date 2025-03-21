@@ -12,7 +12,7 @@ build:
 # Run tests
 .PHONY: test
 test: build
-	cargo test --workspace --quiet
+	cargo test --workspace
 
 # Clean up
 .PHONY: clean
