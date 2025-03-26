@@ -1,5 +1,7 @@
 # Declafka - Declarative Kafka Listeners for Rust
 
+![Declafka](Declafka.png?raw=true "Declafka")
+
 ## Disclaimer
 
 This is my personal learning and research project! 
