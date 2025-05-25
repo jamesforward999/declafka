@@ -18,7 +18,7 @@ declafka_macro = { path = "../declafka_macro" }
 # declafka_lib = { git = "https://github.com/jamesforward999/declafka", tag = "v0.1.0" }
 # declafka_macro = { git = "https://github.com/jamesforward999/declafka", tag = "v0.1.0" }
 log = "0.4.25"
-tokio = { version = "1.0.0", features = ["rt", "rt-multi-thread", "macros"] }
+tokio = { version = "1.43.1", features = ["rt", "rt-multi-thread", "macros"] }
 
 [dev-dependencies]
 tokio-test = "0.4"
